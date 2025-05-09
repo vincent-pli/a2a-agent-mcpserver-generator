@@ -1,0 +1,25 @@
+[project]
+name = "a2a-agent-mcpserver-generator"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "vincent-pli", email = "justdoit.pli@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "a2a-samples",
+    "asyncclick>=8.1.8",
+    "mcp[cli]>=1.8.0",
+    "pydantic>=2.11.4",
+]
+
+[project.scripts]
+a2a-agent-mcpserver-generator = "a2a_agent_mcpserver_generator:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv.sources]
+a2a-samples = { git = "https://github.com/google/A2A", subdirectory = "samples/python" }
