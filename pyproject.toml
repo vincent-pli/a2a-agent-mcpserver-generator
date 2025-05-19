@@ -6,20 +6,21 @@ readme = "README.md"
 authors = [
     { name = "vincent-pli", email = "justdoit.pli@gmail.com" }
 ]
-requires-python = ">=3.12"
+requires-python = ">=3.13"
 dependencies = [
-    "a2a-samples",
+    "a2a-sdk",
     "asyncclick>=8.1.8",
     "mcp[cli]>=1.8.0",
     "pydantic>=2.11.4",
+    "python-dotenv>=1.1.0",
 ]
 
 [project.scripts]
-a2a-agent-mcpserver-generator = "a2a_agent_mcpserver_generator:main"
+a2a-agent-mcpserver-generator = "a2a_agent_mcpserver_generator:app"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.uv.sources]
-a2a-samples = { git = "https://github.com/google/A2A", subdirectory = "samples/python" }
+a2a-sdk = { git = "https://github.com/google/a2a-python" }

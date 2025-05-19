@@ -7,7 +7,7 @@ description = {description}
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "a2a-samples",
+    "a2a-sdk",
     "mcp[cli]>=1.8.0",
     "pydantic>=2.11.4",
 ]
@@ -20,7 +20,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.uv.sources]
-a2a-samples = {{ git = "https://github.com/google/A2A", subdirectory = "samples/python" }}
+a2a-sdk = {{ git = "https://github.com/google/a2a-python" }}
 
 '''
     return pyproject_code
@@ -31,3 +31,4 @@ def generate_env_file():
 PUSH_NOTIFICATION_RECEIVER=http://localhost:5000
 # TODO add auth stuff here
 '''
+    return env_file_content

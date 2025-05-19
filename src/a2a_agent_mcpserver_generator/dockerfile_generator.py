@@ -1,4 +1,8 @@
 def generate_docker_files(notification_receiver_port: str):
+    expose_line = ''
+    if notification_receiver_port:
+        expose_line = f'EXPOSE {notification_receiver_port}'
+
     dockerfile = f'''
 FROM python:3.12-slim as builder
 
@@ -17,14 +21,13 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# 从 builder 复制虚拟环境
 COPY --from=builder /app/.venv ./.venv
 
 ENV PATH="/app/.venv/bin:$PATH"
 
 COPY . .
 
-EXPOSE {notification_receiver_port}
+{expose_line}
 
 CMD ["python", "server.py"]
 '''

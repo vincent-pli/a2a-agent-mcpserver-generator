@@ -1,29 +1,75 @@
 def generate_server_file(card_str: str, card_parsed_str: str):
         server_code = f'''
 
-from common.types import AgentCard
 from a2a_agent_mcpserver_generator.types import CardParsed
 from dotenv import load_dotenv
 import os
+import httpx
 import urllib
-from common.client import A2AClient
-from common.types import SendTaskResponse
 from mcp.server.lowlevel import NotificationOptions, Server
 from mcp import types
 from uuid import uuid4
 import mcp.server.stdio
 from mcp.server.models import InitializationOptions
+from a2a.types import (
+    AgentCard,
+    SendMessageResponse,
+    GetTaskResponse,
+    SendMessageSuccessResponse,
+    Task,
+    TaskState,
+    SendMessageRequest,
+    MessageSendParams,
+    GetTaskRequest,
+    TaskQueryParams,
+    SendStreamingMessageRequest,
+    JSONRPCErrorResponse,
+    Message,
+    SendStreamingMessageResponse,
+    TaskStatusUpdateEvent,
+    TaskArtifactUpdateEvent,
+    Artifact,
+)
+from a2a.client import A2AClient
+from contextlib import asynccontextmanager
+from collections.abc import AsyncIterator
+from typing import Any
+import asyncio
 
 
 load_dotenv()
-CARD = {card_str}
-CARD_PARSED = {card_parsed_str}
+CARD = '{card_str}'
+CARD_PARSED = '{card_parsed_str}'
+
+def create_send_message_payload(
+    text: str, task_id: str | None = None, context_id: str | None = None
+) -> dict[str, Any]:
+    """Helper function to create the payload for sending a task."""
+    payload: dict[str, Any] = {{
+        'message': {{
+            'role': 'user',
+            'parts': [{{'type': 'text', 'text': text}}],
+            'messageId': uuid4().hex,
+        }},
+    }}
+
+    if task_id:
+        payload['message']['taskId'] = task_id
+
+    if context_id:
+        payload['message']['contextId'] = context_id
+    return payload
+
+def merge_artifact(original: Artifact, new_comming: Artifact) -> Artifact:
+    assert original.artifactId == new_comming.artifactId
+    original.parts.extend(new_comming.parts)
+    return original
 
 class MCPRuntime:
     def __init__(self) -> None:
         self.card = AgentCard.model_validate_json(CARD)
         self.card_parsed = CardParsed.model_validate_json(CARD_PARSED)
-        self.server = None
+        self.server: Server = None
         self.is_debug = False
         self.is_connectd = False
         if self.card.capabilities.pushNotifications:    
@@ -31,7 +77,6 @@ class MCPRuntime:
             notif_receiver_parsed = urllib.parse.urlparse(push_notification_receiver)
             self.notification_receiver_host = notif_receiver_parsed.hostname
             self.notification_receiver_port = notif_receiver_parsed.port
-
 
 class ServerLifespan:
     def __init__(self, runtime: MCPRuntime):
@@ -52,25 +97,14 @@ class ServerLifespan:
         # Initialize resources on startup
         # Notification server 
         # TODO, need send notification to client when get the notification from remote agent
-        if self.runtime.card.capabilities.pushNotifications:
-            from hosts.cli.push_notification_listener import (
-                PushNotificationListener,
-            )
-
-            notification_receiver_auth = PushNotificationReceiverAuth()
-            await notification_receiver_auth.load_jwks(
-                f'{{self.runtime.card.url}}/.well-known/jwks.json'
-            )
-
-            push_notification_listener = PushNotificationListener(
-                host=self.runtime.notification_receiver_host,
-                port=self.runtime.notification_receiver_port,
-                notification_receiver_auth=notification_receiver_auth,
-            )
-            push_notification_listener.start()
 
         # Client
-        client = A2AClient(agent_card=self.runtime.card)
+        async with httpx.AsyncClient() as httpx_client:
+            client = await A2AClient.get_client_from_agent_card_url(
+                httpx_client, self.runtime.card.url
+            )
+            print('Connection successful.')
+            
         # Auth maybe TODO
         try:
             yield {{"client": client}}
@@ -79,7 +113,7 @@ class ServerLifespan:
 
 
 runtime = MCPRuntime()
-server = Server("example-server", lifespan=ServerLifespan(runtime=runtime))
+server = Server("a2a-mcp-server", lifespan=ServerLifespan(runtime=runtime))
 
 @server.list_tools()
 async def handle_list_tool() -> list[types.Tool]:
@@ -89,41 +123,83 @@ async def handle_list_tool() -> list[types.Tool]:
 async def handle_call_tool(prompt: str) -> list[types.TextContent | types.ImageContent | types.EmbeddedResource]:
     ctx = server.request_context
     client: A2AClient = ctx.lifespan_context["client"]
-    taskId = uuid4().hex
-    sessionId = uuid4().hex
 
-    message = {{
-        'role': 'user',
-        'parts': [
-            {{
-                'type': 'text',
-                'text': prompt,
-            }}
-        ],
-    }}
-    payload = {{
-        'id': taskId,
-        'sessionId': sessionId,
-        'acceptedOutputModes': ['text'],
-        'message': message,
-    }}
-
-    if runtime.card.capabilities.pushNotifications:
-        payload['pushNotification'] = {{
-            'url': f'http://{{runtime.notification_receiver_host}}:{{runtime.notification_receiver_port}}/notify',
-            'authentication': {{
-                'schemes': ['bearer'],å
-            }},
-        }}
+    task_id = uuid4().hex
+    context_id = uuid4().hex
+    message = create_send_message_payload(text=prompt, task_id=task_id, context_id=context_id)
     
-    # donot consider stream not, maybe later TODO
+    res: Artifact | Message = None
     if runtime.card.capabilities.streaming:
-        pass
-    taskResult: SendTaskResponse = await client.send_task(payload)
+        request = SendStreamingMessageRequest(
+            params=MessageSendParams(**message)
+        )        
+        stream_response: SendStreamingMessageResponse = await client.send_message_streaming(request)
+        if isinstance(stream_response.root, JSONRPCErrorResponse):
+            return [types.TextContent(
+                type='text',
+                text=stream_response.root.model_dump_json(exclude_none=True)
+            )]
+        
+        task_status: TaskStatusUpdateEvent = None
+        async for chunk in stream_response:
+            if isinstance(chunk, TaskStatusUpdateEvent):
+                task_status = chunk
+                ctx.session.send_log_message(
+                    level="info",
+                    data=f"Task: {{task_id}} is {{task_status.status.state}} at {{task_status.status.timestamp}} with message: {{task_status.status.message}}",
+                    logger="notification_stream",
+                    related_request_id=ctx.request_id,
+                )
+                if task_status.status == TaskState.input_required:
+                    res = task_status.status.message
+
+            if isinstance(chunk, TaskArtifactUpdateEvent):
+                if not chunk.append:
+                    res = chunk.artifact
+                else:
+                    res = merge_artifact(res, chunk.artifact)
+            
+    else:
+        request = SendMessageRequest(
+            params=MessageSendParams(**message)
+        )
+        response: SendMessageResponse = await client.send_message(request)
+        if isinstance(response.root, JSONRPCErrorResponse):
+            return [types.TextContent(
+                type='text',
+                text=response.root.model_dump_json(exclude_none=True)
+            )]
+        
+        if isinstance(response.root, SendMessageSuccessResponse):
+            if isinstance(response.root.result, Message):
+                res = Message
+            
+            if isinstance(response.root.result, Task):
+                task: Task = response.root.result
+                while task.status.state != TaskState.completed:
+                    get_request = GetTaskRequest(params=TaskQueryParams(id=task.id))
+                    get_response: GetTaskResponse = await client.get_task(get_request)
+                    if isinstance(get_response.root, JSONRPCErrorResponse):
+                        return [types.TextContent(
+                            type='text',
+                            text=get_response.root.model_dump_json(exclude_none=True)
+                        )]
+                    
+                    task = get_response.root.result
+
+                    ctx.session.send_log_message(
+                        level="info",
+                        data=f"Task: {{task_id}} is {{task.status.state}} at {{task.status.timestamp}} with message: {{task.status.message}}",
+                        logger="notification_stream",
+                        related_request_id=ctx.request_id,
+                    )
+                    await asyncio.sleep(1)
+
+                res = task.status.message
 
     return [types.TextContent(
         type='text',
-        text=taskResult.model_dump_json(exclude_none=True)
+        text=res.model_dump_json(exclude_none=True)
     )]
 
 @server.set_logging_level()
@@ -131,7 +207,6 @@ async def set_logging_level(level: types.LoggingLevel):
     if level == "debug":
         runtime.is_debug = True
         
-
 async def run():
     async with mcp.server.stdio.stdio_server() as (read_stream, write_stream):
         await server.run(
@@ -142,7 +217,7 @@ async def run():
                 server_version="0.1.0",
                 capabilities=server.get_capabilities(
                     notification_options=NotificationOptions(),
-                    experimental_capabilities={{å}},
+                    experimental_capabilities={{}},
                 ),
             ),
         )

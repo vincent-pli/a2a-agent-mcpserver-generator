@@ -1,19 +1,21 @@
-from common.types import AgentCard
+# from common.types import AgentCard
+from a2a.types import AgentCard
 from a2a_agent_mcpserver_generator.types import CardParsed
 from mcp import types
+
 
 def parse_card(card: AgentCard) -> CardParsed:
     tools: list[types.Tool] = []
     for skill in card.skills:
         tool = types.Tool(
-            name = skill.id + "__" + skill.name,
+            name = skill.id,
             description=skill.description,
             inputSchema={
                 "type": "object",
                 "properties": {
                     "prompt": {
                         "type": "string",
-                        "description": "task promot"
+                        "description": "The complete task description"
                     }
                 }
             },
@@ -23,7 +25,7 @@ def parse_card(card: AgentCard) -> CardParsed:
     
     return CardParsed(
         name=card.name,
-        tools=tool
+        tools=tools
         )
 
 
