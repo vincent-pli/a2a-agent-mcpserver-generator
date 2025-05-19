@@ -10,4 +10,4 @@ wheels/
 .venv
 .python-version
 uv.lock
-mcp-server
+a2a-mcp-server

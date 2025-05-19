@@ -1,11 +1,11 @@
 def generate_pyproject(name: str, description: str):
     pyproject_code = f'''
 [project]
-name = {name}
+name = "a2a-mcp-server"
 version = "0.1.0"
-description = {description}
+description = "{description}"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.13"
 dependencies = [
     "a2a-sdk",
     "mcp[cli]>=1.8.0",
@@ -13,7 +13,7 @@ dependencies = [
 ]
 
 [project.scripts]
-a2a-agent-mcpserver-generator = "a2a_agent_mcpserver_generator:main"
+a2a-agent-mcpserver-generator = "a2a_mcp_server:server"
 
 [build-system]
 requires = ["hatchling"]
@@ -32,3 +32,11 @@ PUSH_NOTIFICATION_RECEIVER=http://localhost:5000
 # TODO add auth stuff here
 '''
     return env_file_content
+
+def generate_README():
+    readme_file_content = '''
+# A2A agents mcpserver generator
+
+Generate MCP server based in the A2A agent
+'''
+    return readme_file_content

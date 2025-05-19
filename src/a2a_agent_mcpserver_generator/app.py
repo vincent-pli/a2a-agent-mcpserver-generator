@@ -4,7 +4,7 @@ import asyncclick as click
 from a2a_agent_mcpserver_generator.utils import parse_card
 from a2a_agent_mcpserver_generator.types import CardParsed
 from a2a_agent_mcpserver_generator.server_generator import generate_server_file
-from a2a_agent_mcpserver_generator.config_generator import generate_pyproject, generate_env_file
+from a2a_agent_mcpserver_generator.config_generator import generate_pyproject, generate_env_file, generate_README
 from a2a_agent_mcpserver_generator.dockerfile_generator import generate_docker_files
 from contextlib import asynccontextmanager
 from collections.abc import AsyncIterator
@@ -20,7 +20,7 @@ load_dotenv()
 
 @click.command()
 @click.option('--agent', default='http://localhost:10000')
-@click.option('--output', default='./mcp-server')
+@click.option('--output', default='./a2a-mcp-server')
 @click.option('--name', default='a2a-agent-mcp-server')
 @click.option('--history', default=False)
 @click.option('--use_push_notifications', default=False)
@@ -60,15 +60,23 @@ async def main(
     pyproject_code = generate_pyproject(f"mcp-server-{card.name}", card.description)
     env_file = generate_env_file()
     dockerfile = generate_docker_files(notification_receiver_port)
+    readme_file = generate_README()
+    init_file = " "
 
     sourcecode = {
-        Path(output)/"server.py": server_code,
+        Path(output)/"src/a2a_mcp_server/server.py": server_code,
         Path(output)/"pyproject.toml": pyproject_code,
         Path(output)/".env.example": env_file,
-        Path(output)/"Dockerfile": dockerfile
+        Path(output)/"Dockerfile": dockerfile,
+        Path(output)/"README.md": readme_file,
+        Path(output)/"src/a2a_mcp_server/__init__.py": init_file
     }
 
     for file_path, content in sourcecode.items():
+        dir_path = os.path.dirname(file_path)
+        if not os.path.exists(dir_path):
+            os.makedirs(dir_path)
+
         with open(file_path, 'w') as f:
             f.write(content)
 

@@ -1,8 +1,7 @@
 def generate_server_file(card_str: str, card_parsed_str: str):
         server_code = f'''
-
-from a2a_agent_mcpserver_generator.types import CardParsed
 from dotenv import load_dotenv
+from pydantic import BaseModel
 import os
 import httpx
 import urllib
@@ -40,6 +39,10 @@ import asyncio
 load_dotenv()
 CARD = '{card_str}'
 CARD_PARSED = '{card_parsed_str}'
+
+class CardParsed(BaseModel):
+    name: str
+    tools: list[types.Tool]
 
 def create_send_message_payload(
     text: str, task_id: str | None = None, context_id: str | None = None
