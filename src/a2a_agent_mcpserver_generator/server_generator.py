@@ -134,30 +134,32 @@ async def handle_call_tool(name: str, arguments: dict) -> list[types.TextContent
                 params=MessageSendParams(**message)
             )        
             stream_response: SendStreamingMessageResponse = client.send_message_streaming(request)
-            if isinstance(stream_response.root, JSONRPCErrorResponse):
-                return [types.TextContent(
-                    type='text',
-                    text=stream_response.root.model_dump_json(exclude_none=True)
-                )]
             
             task_status: TaskStatusUpdateEvent = None
             async for chunk in stream_response:
-                if isinstance(chunk, TaskStatusUpdateEvent):
-                    task_status = chunk
+                if isinstance(chunk.root, JSONRPCErrorResponse):
+                    return [types.TextContent(
+                        type='text',
+                        text=chunk.root.model_dump_json(exclude_none=True)
+                    )]
+
+                if isinstance(chunk.root.result, TaskStatusUpdateEvent):
+                    task_status = chunk.root.result
                     ctx.session.send_log_message(
                         level="info",
                         data=f"Task: {{task_id}} is {{task_status.status.state}} at {{task_status.status.timestamp}} with message: {{task_status.status.message}}",
                         logger="notification_stream",
                         related_request_id=ctx.request_id,
                     )
-                    if task_status.status == TaskState.input_required:
+                    if task_status.status.state == TaskState.input_required:
                         res = task_status.status.message
 
-                if isinstance(chunk, TaskArtifactUpdateEvent):
-                    if not chunk.append:
-                        res = chunk.artifact
+                if isinstance(chunk.root.result, TaskArtifactUpdateEvent):
+                    event = chunk.root.result
+                    if not event.append:
+                        res = event.artifact
                     else:
-                        res = merge_artifact(res, chunk.artifact)
+                        res = merge_artifact(res, event.artifact)
                 
         else:
             request = SendMessageRequest(
