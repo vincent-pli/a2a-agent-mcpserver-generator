@@ -133,7 +133,7 @@ async def handle_call_tool(name: str, arguments: dict) -> list[types.TextContent
             request = SendStreamingMessageRequest(
                 params=MessageSendParams(**message)
             )        
-            stream_response: SendStreamingMessageResponse = await client.send_message_streaming(request)
+            stream_response: SendStreamingMessageResponse = client.send_message_streaming(request)
             if isinstance(stream_response.root, JSONRPCErrorResponse):
                 return [types.TextContent(
                     type='text',
