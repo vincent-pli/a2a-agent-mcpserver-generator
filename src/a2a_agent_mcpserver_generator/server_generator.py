@@ -100,17 +100,10 @@ class ServerLifespan:
         # Initialize resources on startup
         # Notification server 
         # TODO, need send notification to client when get the notification from remote agent
+        # TODO Auth maybe
 
-        # Client
-        async with httpx.AsyncClient() as httpx_client:
-            client = await A2AClient.get_client_from_agent_card_url(
-                httpx_client, self.runtime.card.url
-            )
-            print('Connection successful.')
-            
-        # Auth maybe TODO
         try:
-            yield {{"client": client}}
+            yield {{"client": "fake"}}
         finally:
             pass
 
@@ -123,82 +116,86 @@ async def handle_list_tool() -> list[types.Tool]:
     return runtime.card_parsed.tools
 
 @server.call_tool()
-async def handle_call_tool(prompt: str) -> list[types.TextContent | types.ImageContent | types.EmbeddedResource]:
+async def handle_call_tool(name: str, arguments: dict) -> list[types.TextContent | types.ImageContent | types.EmbeddedResource]:
+    prompt = arguments["prompt"]
     ctx = server.request_context
-    client: A2AClient = ctx.lifespan_context["client"]
+    async with httpx.AsyncClient() as httpx_client:
+        client = await A2AClient.get_client_from_agent_card_url(
+            httpx_client, runtime.card.url
+        )   
 
-    task_id = uuid4().hex
-    context_id = uuid4().hex
-    message = create_send_message_payload(text=prompt, task_id=task_id, context_id=context_id)
-    
-    res: Artifact | Message = None
-    if runtime.card.capabilities.streaming:
-        request = SendStreamingMessageRequest(
-            params=MessageSendParams(**message)
-        )        
-        stream_response: SendStreamingMessageResponse = await client.send_message_streaming(request)
-        if isinstance(stream_response.root, JSONRPCErrorResponse):
-            return [types.TextContent(
-                type='text',
-                text=stream_response.root.model_dump_json(exclude_none=True)
-            )]
+        task_id = uuid4().hex
+        context_id = uuid4().hex
+        message = create_send_message_payload(text=prompt, task_id=task_id, context_id=context_id)
         
-        task_status: TaskStatusUpdateEvent = None
-        async for chunk in stream_response:
-            if isinstance(chunk, TaskStatusUpdateEvent):
-                task_status = chunk
-                ctx.session.send_log_message(
-                    level="info",
-                    data=f"Task: {{task_id}} is {{task_status.status.state}} at {{task_status.status.timestamp}} with message: {{task_status.status.message}}",
-                    logger="notification_stream",
-                    related_request_id=ctx.request_id,
-                )
-                if task_status.status == TaskState.input_required:
-                    res = task_status.status.message
-
-            if isinstance(chunk, TaskArtifactUpdateEvent):
-                if not chunk.append:
-                    res = chunk.artifact
-                else:
-                    res = merge_artifact(res, chunk.artifact)
+        res: Artifact | Message = None
+        if runtime.card.capabilities.streaming:
+            request = SendStreamingMessageRequest(
+                params=MessageSendParams(**message)
+            )        
+            stream_response: SendStreamingMessageResponse = await client.send_message_streaming(request)
+            if isinstance(stream_response.root, JSONRPCErrorResponse):
+                return [types.TextContent(
+                    type='text',
+                    text=stream_response.root.model_dump_json(exclude_none=True)
+                )]
             
-    else:
-        request = SendMessageRequest(
-            params=MessageSendParams(**message)
-        )
-        response: SendMessageResponse = await client.send_message(request)
-        if isinstance(response.root, JSONRPCErrorResponse):
-            return [types.TextContent(
-                type='text',
-                text=response.root.model_dump_json(exclude_none=True)
-            )]
-        
-        if isinstance(response.root, SendMessageSuccessResponse):
-            if isinstance(response.root.result, Message):
-                res = Message
-            
-            if isinstance(response.root.result, Task):
-                task: Task = response.root.result
-                while task.status.state != TaskState.completed:
-                    get_request = GetTaskRequest(params=TaskQueryParams(id=task.id))
-                    get_response: GetTaskResponse = await client.get_task(get_request)
-                    if isinstance(get_response.root, JSONRPCErrorResponse):
-                        return [types.TextContent(
-                            type='text',
-                            text=get_response.root.model_dump_json(exclude_none=True)
-                        )]
-                    
-                    task = get_response.root.result
-
+            task_status: TaskStatusUpdateEvent = None
+            async for chunk in stream_response:
+                if isinstance(chunk, TaskStatusUpdateEvent):
+                    task_status = chunk
                     ctx.session.send_log_message(
                         level="info",
-                        data=f"Task: {{task_id}} is {{task.status.state}} at {{task.status.timestamp}} with message: {{task.status.message}}",
+                        data=f"Task: {{task_id}} is {{task_status.status.state}} at {{task_status.status.timestamp}} with message: {{task_status.status.message}}",
                         logger="notification_stream",
                         related_request_id=ctx.request_id,
                     )
-                    await asyncio.sleep(1)
+                    if task_status.status == TaskState.input_required:
+                        res = task_status.status.message
 
-                res = task.status.message
+                if isinstance(chunk, TaskArtifactUpdateEvent):
+                    if not chunk.append:
+                        res = chunk.artifact
+                    else:
+                        res = merge_artifact(res, chunk.artifact)
+                
+        else:
+            request = SendMessageRequest(
+                params=MessageSendParams(**message)
+            )
+            response: SendMessageResponse = await client.send_message(request)
+            if isinstance(response.root, JSONRPCErrorResponse):
+                return [types.TextContent(
+                    type='text',
+                    text=response.root.model_dump_json(exclude_none=True)
+                )]
+            
+            if isinstance(response.root, SendMessageSuccessResponse):
+                if isinstance(response.root.result, Message):
+                    res = response.root.result
+                
+                if isinstance(response.root.result, Task):
+                    task: Task = response.root.result
+                    while task.status.state != TaskState.completed:
+                        get_request = GetTaskRequest(params=TaskQueryParams(id=task.id))
+                        get_response: GetTaskResponse = await client.get_task(get_request)
+                        if isinstance(get_response.root, JSONRPCErrorResponse):
+                            return [types.TextContent(
+                                type='text',
+                                text=get_response.root.model_dump_json(exclude_none=True)
+                            )]
+                        
+                        task = get_response.root.result
+
+                        ctx.session.send_log_message(
+                            level="info",
+                            data=f"Task: {{task_id}} is {{task.status.state}} at {{task.status.timestamp}} with message: {{task.status.message}}",
+                            logger="notification_stream",
+                            related_request_id=ctx.request_id,
+                        )
+                        await asyncio.sleep(1)
+
+                    res = task.status.message
 
     return [types.TextContent(
         type='text',
@@ -224,6 +221,9 @@ async def run():
                 ),
             ),
         )
+
+def start():
+    asyncio.run(run())
 
 if __name__ == '__main__':
     asyncio.run(run())
