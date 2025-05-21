@@ -199,9 +199,10 @@ async def handle_call_tool(name: str, arguments: dict) -> list[types.TextContent
 
                     res = task.status.message
 
+    result_text = "".join(part.root.text for part in res.parts)
     return [types.TextContent(
         type='text',
-        text=res.model_dump_json(exclude_none=True)
+        text=result_text
     )]
 
 @server.set_logging_level()
