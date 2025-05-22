@@ -28,7 +28,18 @@ def parse_card(card: AgentCard) -> CardParsed:
         tools=tools
         )
 
+def generate_server_conf(absolute_path: str):
+    config = {
+        "command": "uv",
+        "args": [
+            "--project",
+            absolute_path,
+            "run",
+            "a2a-agent-mcpserver"
+        ]
+    }
 
+    return config
 
 
 

@@ -1,6 +1,6 @@
 [project]
 name = "a2a-agent-mcpserver-generator"
-version = "0.1.0"
+version = "0.1.1"
 description = "Add your description here"
 readme = "README.md"
 authors = [
@@ -16,7 +16,7 @@ dependencies = [
 ]
 
 [project.scripts]
-a2a-agent-mcpserver-generator = "a2a_agent_mcpserver_generator:app"
+a2a-agent-mcpserver-generator = "a2a_agent_mcpserver_generator.app:run"
 
 [build-system]
 requires = ["hatchling"]
@@ -24,3 +24,5 @@ build-backend = "hatchling.build"
 
 [tool.uv.sources]
 a2a-sdk = { git = "https://github.com/google/a2a-python" }
+
+

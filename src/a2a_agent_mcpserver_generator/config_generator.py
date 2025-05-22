@@ -13,7 +13,7 @@ dependencies = [
 ]
 
 [project.scripts]
-a2a-agent-mcpserver-generator = "a2a_mcp_server.server:start"
+a2a-agent-mcpserver = "a2a_mcp_server.server:start"
 
 [build-system]
 requires = ["hatchling"]
