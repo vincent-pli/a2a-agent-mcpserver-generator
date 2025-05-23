@@ -145,9 +145,10 @@ async def handle_call_tool(name: str, arguments: dict) -> list[types.TextContent
 
                 if isinstance(chunk.root.result, TaskStatusUpdateEvent):
                     task_status = chunk.root.result
-                    ctx.session.send_log_message(
+                    notification_msg = ''.join(part.root.text for part in task_status.status.message.parts) if task_status.status.message else ""
+                    await ctx.session.send_log_message(
                         level="info",
-                        data=f"Task: {{task_id}} is {{task_status.status.state}} at {{task_status.status.timestamp}} with message: {{task_status.status.message}}",
+                        data=f"Task: {{task_id}} is '{{task_status.status.state}}' with message: {{notification_msg}}",
                         logger="notification_stream",
                         related_request_id=ctx.request_id,
                     )
@@ -188,10 +189,10 @@ async def handle_call_tool(name: str, arguments: dict) -> list[types.TextContent
                             )]
                         
                         task = get_response.root.result
-
-                        ctx.session.send_log_message(
+                        notification_msg = ''.join(part.root.text for part in task_status.status.message.parts) if task_status.status.message else ""
+                        await ctx.session.send_log_message(
                             level="info",
-                            data=f"Task: {{task_id}} is {{task.status.state}} at {{task.status.timestamp}} with message: {{task.status.message}}",
+                            data=f"Task: {{task_id}} is '{{task_status.status.state}}' with message: {{notification_msg}}",
                             logger="notification_stream",
                             related_request_id=ctx.request_id,
                         )

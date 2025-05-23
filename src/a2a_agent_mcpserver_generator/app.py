@@ -45,9 +45,14 @@ async def main(
     log.info(f'- Server Name: {name}')
 
     # Load agent.json
-    async with httpx.AsyncClient() as httpx_client:
-        card_resolver = A2ACardResolver(httpx_client=httpx_client, base_url=agent)
-        card: AgentCard = await card_resolver.get_agent_card()
+    try:
+        async with httpx.AsyncClient() as httpx_client:
+            card_resolver = A2ACardResolver(httpx_client=httpx_client, base_url=agent)
+            card: AgentCard = await card_resolver.get_agent_card()
+    except Exception as e:
+        log.error(f"failed to get agent card from address: {agent}")
+        log.error(e)
+        return
 
     # Parse agent.json
     card_parsed: CardParsed = parse_card(card)
