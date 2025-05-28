@@ -161,6 +161,9 @@ async def handle_call_tool(name: str, arguments: dict) -> list[types.TextContent
                         res = event.artifact
                     else:
                         res = merge_artifact(res, event.artifact)
+                        
+                if isinstance(chunk.root.result, Message):
+                    res = chunk.root.result
                 
         else:
             request = SendMessageRequest(
